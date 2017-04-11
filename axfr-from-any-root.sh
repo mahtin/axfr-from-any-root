@@ -42,7 +42,7 @@ done
 
 if [ `ls *.txt 2>/dev/null | wc -l` = "0" ]
 then
-	echo === AXFR a-m failed - this should not happen - exiting 1>&2
+	echo === AXFR all a-m servers failed - this should not happen - exiting 1>&2
 	exit 1
 fi
 
@@ -82,6 +82,10 @@ done
 
 timestamp=`awk '$1 == "." && $3 == "IN" && $4 == "SOA" { print $7; }' < ${first}.txt | uniq`
 cp ${first}.txt root-zone-${timestamp}.txt
+
+#
+# clean up
+#
 
 rm [a-m].txt
 
