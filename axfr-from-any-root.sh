@@ -2,6 +2,9 @@
 
 #
 # axfr-from-any-root.sh - collect root zone with full error checking from any root operator (b, c, f, g, k presently) 
+# ICANN also has xfr.lax.dns.icann.org and xfr.cjr.dns.icann.org available for transfers - which can be added one day
+# See https://tools.ietf.org/html/rfc7706 for more info
+#
 # written by Martin J. Levy
 #
 
@@ -15,7 +18,7 @@ LETTERS="a b c d e f g h i j k l m"
 #
 for letter in ${LETTERS}
 do
-	((time dig +nocmd +nostats @${letter}.root-servers.net . axfr > ${letter}.txt ) 2> ${letter}.log ; echo === AXFR ${letter} done 1>&2 ) &
+	((time dig +nocmd +nostats @${letter}.root-servers.net . axfr > ${tmp}_${letter}.txt ) 2> ${tmp}_${letter}.log ; echo === AXFR ${letter} done 1>&2 ) &
 done
 
 #
@@ -28,15 +31,15 @@ wait
 #
 for letter in ${LETTERS}
 do
-	if [ ! -s ${letter}.txt ]
+	if [ ! -s ${tmp}_${letter}.txt ]
 	then
 		continue
 	fi
-	if fgrep -q '; Transfer failed.' ${letter}.txt
+	if fgrep -q '; Transfer failed.' ${tmp}_${letter}.txt
 	then
 		# Lets remove this from the answer group
 		echo === AXFR ${letter} failed - being removed 1>&2
-		rm ${letter}.txt ${letter}.log
+		rm ${tmp}_${letter}.txt ${tmp}_${letter}.log
 	fi
 done
 
@@ -46,27 +49,27 @@ then
 	exit 1
 fi
 
-fgrep real ?.log | sed -e 's/^\([a-m]\).log:real	\([^ ][^ ]*\)$/\1	\2/' -e 's/	0m/	/' | sort -bk2,3 | while read letter latency
+fgrep real ${tmp}_?.log | sed -e 's/.*\([a-m]\)\.log:real	\([^ ][^ ]*\)$/\1	\2/' -e 's/	0m/	/' | sort -bk2,3 | while read letter latency
 do
-	timestamp=`awk '$1 == "." && $3 == "IN" && $4 == "SOA" { print $7; }' < ${letter}.txt | uniq`
+	timestamp=`awk '$1 == "." && $3 == "IN" && $4 == "SOA" { print $7; }' < ${tmp}_${letter}.txt | uniq`
 	echo === AXFR ${letter} = ${latency} ';' ${timestamp} 1>&2
-	rm ${letter}.log
+	rm ${tmp}_${letter}.log
 done
 
 #
 # we are left with just answered queries - now check they are all the same.
 #
 
-first=`ls [a-m].txt | head -1 | cut -c1,1`
+first=`ls ${tmp}_[a-m].txt | head -1 | sed -e 's/.*_//' -e 's/\.txt$//'`
 
-sort < ${first}.txt > ${tmp}_1
+sort < ${tmp}_${first}.txt > ${tmp}_sorted.txt
 for letter in ${LETTERS}
 do
-	if [ ! -s ${letter}.txt ]
+	if [ ! -s ${tmp}_${letter}.txt ]
 	then
 		continue
 	fi
-	if sort ${letter}.txt | diff -q - ${tmp}_1
+	if sort ${tmp}_${letter}.txt | diff -q - ${tmp}_sorted.txt
 	then
 		# the same - this is a good thing
 		:
@@ -80,13 +83,13 @@ done
 # done - confirmed some transfers and that they are all the same - save file away
 #
 
-timestamp=`awk '$1 == "." && $3 == "IN" && $4 == "SOA" { print $7; }' < ${first}.txt | uniq`
-cp ${first}.txt root-zone-${timestamp}.txt
+timestamp=`awk '$1 == "." && $3 == "IN" && $4 == "SOA" { print $7; }' < ${tmp}_sorted.txt | uniq`
+cp ${tmp}_sorted.txt root-zone-${timestamp}.txt
 
 #
 # clean up
 #
 
-rm [a-m].txt
+rm ${tmp}_[a-m].txt
 
 exit 0
